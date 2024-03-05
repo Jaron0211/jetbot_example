@@ -2,6 +2,8 @@ import cv2
 import cv2.aruco as aruco
 import numpy as np
 import math
+file = np.load('calibration.npz')
+mtx, dist, R, T = [file[i] for i in ('mtx', 'dist', 'rvecs', 'tvecs')]
 
 def gstreamer_pipeline(
     capture_width=1280,
@@ -70,7 +72,7 @@ def aruco_detect(frame, gray):
 # #                 distance[i, :] = np.array([id, dis, tz])
 # #         distance = np.round(distance, 1)
     if ids is not None:
-            rvec, tvec, _ = aruco.estimatePoseSingleMarkers(corners, 0.03)
+            rvec, tvec, _ = aruco.estimatePoseSingleMarkers(corners, 0.03, mtx, dist)
             for i in range(len(ids)):
                 x = tvec[i, 0, 0]
                 y = tvec[i, 0, 1]
