@@ -34,6 +34,24 @@ def gstreamer_pipeline(
 
 cap = cv2.VideoCapture(gstreamer_pipeline(), cv2.CAP_GSTREAMER)
 
+def rotationVectorToEulerAngles(rvec):
+    R = np.zeros((3, 3), dtype=np.float64)
+    cv2.Rodrigues(rvec, R)
+    sy = math.sqrt(R[0, 0] * R[0, 0] + R[1, 0] * R[1, 0])
+    singular = sy < 1e-6
+    if not singular:  # 偏航，俯仰，滚动
+        x = math.atan2(R[2, 1], R[2, 2])
+        y = math.atan2(-R[2, 0], sy)
+        z = math.atan2(R[1, 0], R[0, 0])
+    else:
+        x = math.atan2(-R[1, 2], R[1, 1])
+        y = math.atan2(-R[2, 0], sy)
+        z = 0
+    # 偏航，俯仰，滚动换成角度
+    rx = x * 180.0 / 3.141592653589793
+    ry = y * 180.0 / 3.141592653589793
+    rz = z * 180.0 / 3.141592653589793
+    return rx, ry, rz
 
 def aruco_detect(frame, gray):
 
@@ -41,59 +59,29 @@ def aruco_detect(frame, gray):
     parameters = aruco.DetectorParameters_create()
     corners, ids, _ = aruco.detectMarkers(gray, aruco_dict, parameters=parameters)
     back = np.array([])
-    
-#     if ids is not None:
-#         for i in range(len(ids)):
-            
-#             #print(corners[i])
-#             #print(tz)
-            
-#             cv2.line(frame, (int(corners[i][0][0][0]),int(corners[i][0][0][1])), 
-#                                   (int(corners[i][0][1][0]),int(corners[i][0][1][1])), (255,0,0), 2)
-            
-#             cv2.line(frame, (int(corners[i][0][1][0]),int(corners[i][0][1][1])), 
-#                                   (int(corners[i][0][2][0]),int(corners[i][0][2][1])), (0,255,0), 2)
 
-#             cv2.line(frame, (int(corners[i][0][2][0]),int(corners[i][0][2][1])), 
-#                                   (int(corners[i][0][3][0]),int(corners[i][0][3][1])), (0,0,255), 2)
-
-#             cv2.putText(frame, str(ids[i]), (int(corners[i][0][0][0]),int(corners[i][0][0][1])), cv2.FONT_HERSHEY_SIMPLEX,1, (0, 255, 255), 1, cv2.LINE_AA)
-
-#             x = corners[i][0][0][0] - corners[i][0][1][0]
-#             y = corners[i][0][0][1] - corners[i][0][1][1]
-#             dis = math.sqrt(pow(x,2)+pow(y,2))*100 + 3
-            
-#             # modified distance
-#             dis = 0.0084*pow(dis, 2) + 0.5877*dis - 2.1246
-# #                 print('id = ', ids[i], dis, '(cm)')
-#             id = int(ids[i])
-#             #if (0 <= id < 22) & (tz < 90):
-#             back = np.array([id, dis])
-# #                 distance[i, :] = np.array([id, dis, tz])
-# #         distance = np.round(distance, 1)
     if ids is not None:
-            rvec, tvec, _ = aruco.estimatePoseSingleMarkers(corners, 0.03, mtx, dist)
-            for i in range(len(ids)):
-                x = tvec[i, 0, 0]
-                y = tvec[i, 0, 1]
-                z = tvec[i, 0, 2]
-                R = cv2.Rodrigues(rvec[i])[0]
-                # euler angle
-#                 tx = atan2(R[2, 1], R[2, 2])
-#                 ty = atan2(-R[2, 0], sqrt(pow(R[2, 1], 2) + pow(R[2, 2], 2)))
-                tz = np.rad2deg(math.atan2(R[1, 0], R[0, 0]))
-#                 angle = np.rad2deg(np.array([tx, ty, tz]))
-#                 print(tz)
-                dis = math.sqrt(pow(x,2)+pow(y,2)+pow(z,2))*100 + 3
-                # modified distance
-                dis = 0.0084*pow(dis, 2) + 0.5877*dis - 2.1246
-#                 print('id = ', ids[i], dis, '(cm)')
-                id = int(ids[i])
-                if (0 <= id < 22) & (tz < 90):
-                    back = np.array([id, dis])
-#                 distance[i, :] = np.array([id, dis, tz])
-#         distance = np.round(distance, 1)
-    return frame, back
+                    
+        rvec, tvec, _ = aruco.estimatePoseSingleMarkers(corners, 0.035, mtx, dist)
+
+        for i in range(rvec.shape[0]):
+            aruco.drawAxis(frame, mtx, dist, rvec[i, :, :], tvec[i, :, :], 0.03)
+            aruco.drawDetectedMarkers(frame, corners)
+
+        ###### DRAW ID #####
+        cv2.putText(frame, "Id: " + str(ids), (0, 40), font, 0.6, (0, 255, 0), 2, cv2.LINE_AA)
+        EulerAngles = rotationVectorToEulerAngles(rvec)
+        EulerAngles = [round(i, 2) for i in EulerAngles]
+        cv2.putText(frame, "Attitude_angle:" + str(EulerAngles), (0, 120), font, 0.6, (0, 255, 0), 2,
+                    cv2.LINE_AA)
+        tvec = tvec * 1000
+
+        for i in range(3):
+            tvec[0][0][i] = round(tvec[0][0][i], 1)
+        tvec = np.squeeze(tvec)
+        cv2.putText(frame, "Position_coordinates:" + str(tvec) + str('mm'), (0, 80), font, 0.6, (0, 255, 0), 2,
+                    cv2.LINE_AA)
+    return frame
     
 while 1:
 
@@ -107,7 +95,4 @@ while 1:
         cv2.imshow('img',frame)
 
         cv2.waitKey(1)
-        
-        if len(back):
-            print("id: %s, dis: %s"%(back[0],back[1]))
     
